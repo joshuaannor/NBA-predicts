@@ -494,21 +494,29 @@
       const list = document.createElement('div'); list.className = 'team-list'; list.dataset.conf = conf; list.dataset.div = div; block.appendChild(list);
       teams.forEach(t => list.appendChild(makeTeamChip(t.name)));
       hookDropZone(list, (srcName, targetList, afterNode) => {
-        // Reorder within division
-        const arr = STATE.divisions[conf][div];
-        const idx = arr.findIndex(t => t.name === srcName);
-        const [item] = arr.splice(idx, 1);
-        let newIndex = (afterNode ? [...targetList.children].indexOf(afterNode) + 1 : 0);
-        arr.splice(newIndex, 0, item);
-        // Also reflect in conference order if both belong to same conf
+        // Move or reorder within divisions (same or cross-division)
+        const targetArr = STATE.divisions[conf][div];
+        const srcCtx = dragData.context;
+        let item = null;
+        if (srcCtx?.mode === 'division') {
+          const srcArr = STATE.divisions[srcCtx.conf][srcCtx.div];
+          const i = srcArr.findIndex(t => t.name === srcName);
+          if (i >= 0) item = srcArr.splice(i, 1)[0];
+        }
+        if (!item) { const t = findTeam(srcName); item = { name: t.name, colors: t.colors }; }
+
+        const siblings = [...targetList.querySelectorAll('.team')].map(n => n.dataset.team);
+        const anchorName = afterNode ? afterNode.dataset.team : siblings[0] || null;
+        const insertIndex = afterNode ? siblings.indexOf(afterNode.dataset.team) + 1 : 0;
+        targetArr.splice(insertIndex, 0, item);
+
+        // Reflect position roughly in conference order near target division neighbor
         const confArr = STATE.standings[conf];
-        const i = confArr.indexOf(srcName); confArr.splice(i,1); // remove
-        // insert roughly near other from same division position
-        const siblings = arr.map(t=>t.name);
-        const anchor = siblings[Math.min(newIndex, siblings.length-1)];
-        const anchorIdx = confArr.indexOf(anchor);
-        confArr.splice(Math.max(anchorIdx,0), 0, srcName);
-        savePoint(); renderStandings();
+        const old = confArr.indexOf(srcName); if (old >= 0) confArr.splice(old,1);
+        const anchorIdx = anchorName ? confArr.indexOf(anchorName) : -1;
+        confArr.splice(anchorIdx >= 0 ? anchorIdx + 1 : 0, 0, srcName);
+
+        savePoint(); renderAll();
       });
       return block;
     }
@@ -534,7 +542,21 @@
     // --- Drag & Drop helpers ----------------------------------------------
     let dragData = { el: null };
     function hookDnD(el) {
-      el.addEventListener('dragstart', (e) => { dragData.el = el; setTimeout(()=>el.classList.add('ghost'), 0); e.dataTransfer.setData('text/plain', el.dataset.team); e.dataTransfer.effectAllowed = 'move'; });
+      el.addEventListener('dragstart', (e) => {
+        dragData.el = el;
+        // Capture source context (division or conference)
+        const parent = el.parentElement;
+        if (parent?.classList.contains('team-list')) {
+          dragData.context = { mode: 'division', conf: parent.dataset.conf, div: parent.dataset.div };
+        } else if (parent?.id === 'east-ordered' || parent?.id === 'west-ordered') {
+          dragData.context = { mode: 'conference', conf: parent.id.startsWith('east') ? 'Eastern' : 'Western' };
+        } else {
+          dragData.context = null;
+        }
+        setTimeout(()=>el.classList.add('ghost'), 0);
+        e.dataTransfer.setData('text/plain', el.dataset.team);
+        e.dataTransfer.effectAllowed = 'move';
+      });
       el.addEventListener('dragend', () => { el.classList.remove('ghost'); dragData.el = null; });
     }
     function hookDropZone(zone, onDrop) {
@@ -710,4 +732,3 @@
   </script>
 </body>
 </html>
-
