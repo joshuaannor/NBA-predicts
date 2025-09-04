@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0f14" />
+  <meta name="description" content="Modern, interactive NBA season predictions app: standings, playoffs, awards, stats, exports." />
+  <title>NBA Season Predictions</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --bg-soft: #0f1621cc;
+      --panel: #101722bf;
+      --glass: rgba(16, 23, 34, 0.6);
+      --text: #e6edf3;
+      --muted: #9fb0c0;
+      --accent: #f97316;
+      --accent-2: #06b6d4;
+      --good: #10b981;
+      --bad: #ef4444;
+      --card: #11182780;
+      --stroke: #1f2937;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+      --radius: 14px;
+      --blur: 18px;
+    }
+
+    * { box-sizing: border-box }
+    html, body { height: 100% }
+    body {
+      margin: 0;
+      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: radial-gradient(1200px 900px at 10% -10%, #102032, transparent 45%),
+                  radial-gradient(1000px 800px at 100% 0%, #071019, transparent 55%),
+                  linear-gradient(160deg, #0b0f14, #0b0f14 50%, #0e141b 100%);
+      overflow-x: hidden;
+    }
+
+    /* Subtle moving court lines */
+    body::before, body::after {
+      content: ""; position: fixed; inset: -10%;
+      background-image: 
+        linear-gradient(transparent 97%, rgba(255,255,255,0.06) 0),
+        linear-gradient(90deg, transparent 97%, rgba(255,255,255,0.06) 0);
+      background-size: 30px 30px, 30px 30px;
+      mask-image: radial-gradient(circle at 20% 10%, black, transparent 60%);
+      opacity: .15; pointer-events: none; filter: blur(0.4px);
+      animation: drift 40s linear infinite;
+    }
+    body::after { animation-direction: reverse; opacity: .09 }
+    @keyframes drift { from { transform: translateY(0) } to { transform: translateY(30px) } }
+
+    header {
+      position: sticky; top: 0; z-index: 50;
+      backdrop-filter: saturate(1.2) blur(var(--blur));
+      background: linear-gradient(180deg, rgba(10,14,19,0.85), rgba(10,14,19,0.3));
+      border-bottom: 1px solid var(--stroke);
+    }
+    .nav {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 16px; align-items: center;
+      max-width: 1200px; margin: 0 auto; padding: 12px 16px;
+    }
+    .brand { display: flex; gap: 12px; align-items: center; font-weight: 700; letter-spacing: 0.2px; }
+    .brand .logo { width: 28px; height: 28px; border-radius: 7px; background: conic-gradient(from 0deg, #f97316, #ef4444, #f59e0b, #22c55e, #06b6d4, #a855f7, #f97316); box-shadow: var(--shadow); }
+    .toolbar { display: flex; gap: 8px; align-items: center; }
+    .toolbar > * { white-space: nowrap }
+
+    select, input, button, .chip { 
+      background: var(--glass); color: var(--text); border: 1px solid var(--stroke);
+      border-radius: 10px; padding: 8px 10px; box-shadow: var(--shadow);
+    }
+    button { cursor: pointer; transition: transform .06s ease, background .2s ease; }
+    button:hover { transform: translateY(-1px) }
+    button.primary { background: linear-gradient(180deg, #ff7a1a, #f97316); border-color: #ff8b3b; color: #0b0f14; font-weight: 700; }
+    button.ghost { background: transparent }
+
+    .grid { max-width: 1200px; margin: 16px auto; padding: 0 16px; display: grid; gap: 16px; grid-template-columns: 1.5fr 1fr; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr } }
+
+    .panel { background: var(--panel); border: 1px solid var(--stroke); border-radius: var(--radius); box-shadow: var(--shadow); overflow: clip; }
+    .panel h2 { margin: 0; padding: 14px 16px; font-size: 16px; border-bottom: 1px solid var(--stroke); background: linear-gradient(180deg, #101722, #0d131c); }
+    .panel .content { padding: 12px; }
+
+    .conf { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+    @media (max-width: 900px) { .conf { grid-template-columns: 1fr } }
+    .division { display: flex; flex-direction: column; gap: 8px; }
+    .division h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .3px; }
+    .team-list { display: flex; flex-direction: column; gap: 8px; min-height: 180px; padding: 8px; border-radius: 12px; border: 1px dashed #213041; background: linear-gradient(180deg, #0c121a, #0e1622); }
+    .team { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--stroke); box-shadow: var(--shadow); cursor: grab; transition: transform .12s ease, background .2s ease, box-shadow .2s ease; }
+    .team:active { cursor: grabbing; transform: scale(.995) }
+    .swatch { width: 20px; height: 20px; border-radius: 6px; border: 1px solid #0006; box-shadow: inset 0 0 0 2px #0003; }
+    .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--stroke); color: var(--muted); background: #0e1622; }
+    .ghost { outline: 2px dashed var(--accent); border-color: #f59e0b !important; }
+
+    .standings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 900px) { .standings { grid-template-columns: 1fr } }
+    .ordered { counter-reset: seed; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; border: 1px dashed #213041; background: linear-gradient(180deg, #0c121a, #0e1622); min-height: 200px; }
+    .ordered .team::before { counter-increment: seed; content: counter(seed) "."; color: var(--muted); padding-right: 6px; font-variant-numeric: tabular-nums; }
+
+    .bracket { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 980px) { .bracket { grid-template-columns: 1fr } }
+    .round { display: grid; gap: 8px; }
+    .match { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--stroke); }
+    .series { display: flex; gap: 6px; align-items: center; }
+    .series select { padding: 6px 8px }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 900px) { .two-col { grid-template-columns: 1fr } }
+
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip { padding: 6px 10px; display: inline-flex; align-items: center; gap: 8px; }
+    .chip input[type="checkbox"] { accent-color: var(--accent) }
+
+    .footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .muted { color: var(--muted) }
+    .tiny { font-size: 12px }
+
+    /* Print for PDF export */
+    @media print {
+      header { position: static; background: none; border: 0 }
+      .panel { break-inside: avoid }
+      button, select, input { display: none !important }
+      .nav { grid-template-columns: 1fr }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <div class="brand"><div class="logo" aria-hidden="true"></div> NBA Predictions</div>
+      <div class="toolbar">
+        <label class="tiny muted">Season</label>
+        <select id="season">
+          <option>2024-25</option>
+          <option>2025-26</option>
+        </select>
+      </div>
+      <div class="toolbar">
+        <button id="undo" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+        <button id="redo" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
+        <button id="save" class="ghost" title="Save to device">Save</button>
+        <button id="export" class="ghost" title="Export JSON/CSV">Export</button>
+        <button id="print" class="primary" title="Print/Save PDF">Export PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="grid" id="app" aria-live="polite">
+    <section class="panel" id="standings-panel">
+      <h2>Conference Standings & Divisions</h2>
+      <div class="content">
+        <div class="footer-actions" style="margin-bottom:8px">
+          <button data-action="randomize">Randomize</button>
+          <button data-action="reset">Reset</button>
+          <span class="muted tiny">Drag teams to reorder. Autosaves.</span>
+        </div>
+        <div class="conf">
+          <div>
+            <h3 class="muted" style="margin:8px 0 6px">Eastern Conference — Divisions</h3>
+            <div id="east-divisions" class="two-col"></div>
+            <h3 class="muted" style="margin:16px 0 6px">Eastern Conference — Order (1–15)</h3>
+            <div id="east-ordered" class="ordered" aria-label="Eastern Conference Order"></div>
+          </div>
+          <div>
+            <h3 class="muted" style="margin:8px 0 6px">Western Conference — Divisions</h3>
+            <div id="west-divisions" class="two-col"></div>
+            <h3 class="muted" style="margin:16px 0 6px">Western Conference — Order (1–15)</h3>
+            <div id="west-ordered" class="ordered" aria-label="Western Conference Order"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="playoffs-panel">
+      <h2>Playoff Predictions</h2>
+      <div class="content">
+        <div class="chips" style="margin-bottom:8px">
+          <span class="tiny muted">Seeds from conference order. Pick winners and series length.</span>
+        </div>
+        <div class="bracket">
+          <div class="round" id="east-bracket"></div>
+          <div class="round" id="west-bracket"></div>
+        </div>
+        <div style="margin-top:12px" class="tiny muted">Play-in (7–10) winners auto-fill seeds 7 and 8 once chosen.</div>
+      </div>
+    </section>
+
+    <section class="panel" id="awards-panel">
+      <h2>Awards & All-Star</h2>
+      <div class="content">
+        <div class="two-col">
+          <div>
+            <h3 class="muted" style="margin:0 0 6px">NBA Awards</h3>
+            <div class="two-col">
+              <div>
+                <label>MVP</label>
+                <input list="players" id="mvp" placeholder="Player name" />
+              </div>
+              <div>
+                <label>DPOY</label>
+                <input list="players" id="dpoy" placeholder="Player name" />
+              </div>
+              <div>
+                <label>SMOY</label>
+                <input list="players" id="smoy" placeholder="Player name" />
+              </div>
+              <div>
+                <label>ROY</label>
+                <input list="players" id="roy" placeholder="Player name" />
+              </div>
+              <div>
+                <label>MIP</label>
+                <input list="players" id="mip" placeholder="Player name" />
+              </div>
+              <div>
+                <label>COY</label>
+                <input list="players" id="coy" placeholder="Coach name" />
+              </div>
+              <div>
+                <label>EOY</label>
+                <input list="players" id="eoy" placeholder="Executive name" />
+              </div>
+            </div>
+            <div style="margin-top:8px">
+              <label class="tiny muted">Confidence (1–10)</label>
+              <input id="awards-confidence" type="range" min="1" max="10" value="5" />
+            </div>
+          </div>
+          <div>
+            <h3 class="muted" style="margin:0 0 6px">All-Star</h3>
+            <div class="two-col">
+              <div>
+                <label>East Starters (5)</label>
+                <textarea id="east-starters" rows="3" placeholder="Comma-separated players"></textarea>
+              </div>
+              <div>
+                <label>West Starters (5)</label>
+                <textarea id="west-starters" rows="3" placeholder="Comma-separated players"></textarea>
+              </div>
+              <div>
+                <label>East Reserves (7)</label>
+                <textarea id="east-reserves" rows="3" placeholder="Comma-separated players"></textarea>
+              </div>
+              <div>
+                <label>West Reserves (7)</label>
+                <textarea id="west-reserves" rows="3" placeholder="Comma-separated players"></textarea>
+              </div>
+              <div>
+                <label>All-Star MVP</label>
+                <input list="players" id="as-mvp" placeholder="Player name" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="stats-panel">
+      <h2>Statistical Predictions</h2>
+      <div class="content">
+        <div class="two-col">
+          <div>
+            <h3 class="muted" style="margin:0 0 6px">Team Records (W-L)</h3>
+            <div id="team-records" class="two-col"></div>
+          </div>
+          <div>
+            <h3 class="muted" style="margin:0 0 6px">Leaderboards</h3>
+            <div class="two-col">
+              <div>
+                <label>PPG Leader</label>
+                <input list="players" id="ppg" placeholder="Player name" />
+              </div>
+              <div>
+                <label>RPG Leader</label>
+                <input list="players" id="rpg" placeholder="Player name" />
+              </div>
+              <div>
+                <label>APG Leader</label>
+                <input list="players" id="apg" placeholder="Player name" />
+              </div>
+              <div>
+                <label>SPG Leader</label>
+                <input list="players" id="spg" placeholder="Player name" />
+              </div>
+              <div>
+                <label>BPG Leader</label>
+                <input list="players" id="bpg" placeholder="Player name" />
+              </div>
+              <div>
+                <label>3P% Leader</label>
+                <input list="players" id="tpp" placeholder="Player name" />
+              </div>
+              <div>
+                <label>Top Offense (Team)</label>
+                <input list="teams" id="top-off" placeholder="Team name" />
+              </div>
+              <div>
+                <label>Top Defense (Team)</label>
+                <input list="teams" id="top-def" placeholder="Team name" />
+              </div>
+              <div>
+                <label>Most 3PM (Team)</label>
+                <input list="teams" id="most-3pm" placeholder="Team name" />
+              </div>
+              <div>
+                <label>Best FT% (Team)</label>
+                <input list="teams" id="best-ft" placeholder="Team name" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="analytics-panel">
+      <h2>Analytics & Sharing</h2>
+      <div class="content">
+        <div class="two-col">
+          <div>
+            <h3 class="muted" style="margin:0 0 6px">Confidence & Notes</h3>
+            <div class="two-col">
+              <div>
+                <label>Overall Confidence (1–10)</label>
+                <input id="overall-confidence" type="range" min="1" max="10" value="5" />
+              </div>
+              <div>
+                <label>Notes</label>
+                <textarea id="notes" rows="4" placeholder="Your reasoning, what-ifs, and scenarios"></textarea>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3 class="muted" style="margin:0 0 6px">Compare & Import</h3>
+            <div class="footer-actions">
+              <input id="import-file" type="file" accept="application/json" />
+              <button id="compare">Compare</button>
+            </div>
+            <div id="compare-out" class="tiny muted" style="margin-top:8px"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <datalist id="players"></datalist>
+  <datalist id="teams"></datalist>
+
+  <script>
+    // --- Data ---------------------------------------------------------------
+    const TEAM_DATA = {
+      Eastern: {
+        Atlantic: [
+          { name: "Boston Celtics", colors: ["#007A33", "#BA9653"] },
+          { name: "Brooklyn Nets", colors: ["#000000", "#FFFFFF"] },
+          { name: "New York Knicks", colors: ["#F58426", "#006BB6"] },
+          { name: "Philadelphia 76ers", colors: ["#006BB6", "#ED174C"] },
+          { name: "Toronto Raptors", colors: ["#CE1141", "#000000"] },
+        ],
+        Central: [
+          { name: "Chicago Bulls", colors: ["#CE1141", "#000000"] },
+          { name: "Cleveland Cavaliers", colors: ["#6F263D", "#FFB81C"] },
+          { name: "Detroit Pistons", colors: ["#C8102E", "#1D428A"] },
+          { name: "Indiana Pacers", colors: ["#002D62", "#FDBB30"] },
+          { name: "Milwaukee Bucks", colors: ["#00471B", "#EEE1C6"] },
+        ],
+        Southeast: [
+          { name: "Atlanta Hawks", colors: ["#E03A3E", "#C1D32F"] },
+          { name: "Charlotte Hornets", colors: ["#1D1160", "#00788C"] },
+          { name: "Miami Heat", colors: ["#98002E", "#F9A01B"] },
+          { name: "Orlando Magic", colors: ["#0077C0", "#C4CED4"] },
+          { name: "Washington Wizards", colors: ["#002B5C", "#E31837"] },
+        ],
+      },
+      Western: {
+        Northwest: [
+          { name: "Denver Nuggets", colors: ["#0E2240", "#FEC524"] },
+          { name: "Minnesota Timberwolves", colors: ["#0C2340", "#236192"] },
+          { name: "Oklahoma City Thunder", colors: ["#007AC1", "#EF3B24"] },
+          { name: "Portland Trail Blazers", colors: ["#E03A3E", "#000000"] },
+          { name: "Utah Jazz", colors: ["#002B5C", "#00471B"] },
+        ],
+        Pacific: [
+          { name: "Golden State Warriors", colors: ["#1D428A", "#FFC72C"] },
+          { name: "LA Clippers", colors: ["#C8102E", "#1D428A"] },
+          { name: "Los Angeles Lakers", colors: ["#552583", "#FDB927"] },
+          { name: "Phoenix Suns", colors: ["#1D1160", "#E56020"] },
+          { name: "Sacramento Kings", colors: ["#5A2D81", "#63727A"] },
+        ],
+        Southwest: [
+          { name: "Dallas Mavericks", colors: ["#00538C", "#B8C4CA"] },
+          { name: "Houston Rockets", colors: ["#CE1141", "#C4CED4"] },
+          { name: "Memphis Grizzlies", colors: ["#5D76A9", "#12173F"] },
+          { name: "New Orleans Pelicans", colors: ["#0C2340", "#C8102E"] },
+          { name: "San Antonio Spurs", colors: ["#C4CED4", "#000000"] },
+        ],
+      },
+    };
+
+    const STATE = {
+      season: "2024-25",
+      standings: { Eastern: [], Western: [] }, // conference order 1..15
+      divisions: JSON.parse(JSON.stringify(TEAM_DATA)), // current within-division order
+      playin: { Eastern: {}, Western: {} },
+      bracket: { Eastern: {}, Western: {}, Finals: {} },
+      awards: { mvp: "", dpoy: "", smoy: "", roy: "", mip: "", coy: "", eoy: "", confidence: 5 },
+      allstar: { easternStarters: [], westernStarters: [], easternReserves: [], westernReserves: [], mvp: "" },
+      records: {},
+      leaders: { ppg: "", rpg: "", apg: "", spg: "", bpg: "", tpp: "", topOff: "", topDef: "", most3pm: "", bestFt: "" },
+      overallConfidence: 5, notes: ""
+    };
+
+    const HISTORY = { past: [], future: [] };
+    const savePoint = () => {
+      HISTORY.past.push(JSON.stringify(STATE));
+      HISTORY.future.length = 0;
+      localStorage.setItem("nba-predict-state", JSON.stringify(STATE));
+      updateUndoRedo();
+    }
+    const restore = (snap) => { Object.assign(STATE, JSON.parse(snap)); renderAll(); updateUndoRedo(); }
+    const updateUndoRedo = () => {
+      document.getElementById('undo').disabled = HISTORY.past.length === 0;
+      document.getElementById('redo').disabled = HISTORY.future.length === 0;
+    }
+
+    // Load saved
+    const saved = localStorage.getItem("nba-predict-state");
+    if (saved) { Object.assign(STATE, JSON.parse(saved)); } else { initDefaults(); }
+
+    function initDefaults() {
+      // Initial conference order: concatenate divisions in listed order
+      STATE.standings.Eastern = [
+        ...TEAM_DATA.Eastern.Atlantic,
+        ...TEAM_DATA.Eastern.Central,
+        ...TEAM_DATA.Eastern.Southeast,
+      ].map(t => t.name);
+      STATE.standings.Western = [
+        ...TEAM_DATA.Western.Northwest,
+        ...TEAM_DATA.Western.Pacific,
+        ...TEAM_DATA.Western.Southwest,
+      ].map(t => t.name);
+      // Empty records default to 41-41
+      allTeams().forEach(t => STATE.records[t] = { w: 41, l: 41 });
+    }
+
+    function allTeams() { return [
+      ...Object.values(TEAM_DATA.Eastern).flat(),
+      ...Object.values(TEAM_DATA.Western).flat(),
+    ].map(t => t.name); }
+
+    // Build datalists
+    const playerHints = [
+      "Nikola Jokic","Luka Doncic","Giannis Antetokounmpo","Jayson Tatum","Joel Embiid","Shai Gilgeous-Alexander","Stephen Curry","Kevin Durant","LeBron James","Anthony Davis","Kawhi Leonard","Devin Booker","Anthony Edwards","Donovan Mitchell","Jalen Brunson","Jimmy Butler","Damian Lillard","Tyrese Haliburton","Jaren Jackson Jr.","Bam Adebayo","Victor Wembanyama","Chet Holmgren","Jamal Murray","Kyrie Irving","Paul George","Jaylen Brown","Klay Thompson","De'Aaron Fox","Zion Williamson","Trae Young"
+    ];
+    const dlP = document.getElementById('players');
+    const dlT = document.getElementById('teams');
+    playerHints.forEach(p => dlP.appendChild(new Option(p, p)));
+    allTeams().forEach(t => dlT.appendChild(new Option(t, t)));
+
+    // --- UI Builders -------------------------------------------------------
+    function makeTeamChip(name) {
+      const { colors } = findTeam(name);
+      const el = document.createElement('div');
+      el.className = 'team'; el.draggable = true; el.dataset.team = name;
+      el.innerHTML = `
+        <div class="swatch" style="background: linear-gradient(135deg, ${colors[0]}, ${colors[1]})"></div>
+        <div class="name">${name}</div>
+        <div class="badge tiny">Drag</div>
+      `;
+      hookDnD(el);
+      return el;
+    }
+
+    function findTeam(name) {
+      for (const conf of ["Eastern","Western"]) {
+        for (const [div, arr] of Object.entries(TEAM_DATA[conf])) {
+          const t = arr.find(t => t.name === name);
+          if (t) return t;
+        }
+      }
+      return { name, colors: ["#334155","#64748b"] };
+    }
+
+    function renderDivisions() {
+      const east = document.getElementById('east-divisions'); east.innerHTML = '';
+      const west = document.getElementById('west-divisions'); west.innerHTML = '';
+      for (const [div, teams] of Object.entries(STATE.divisions.Eastern)) east.appendChild(divisionBlock('Eastern', div, teams));
+      for (const [div, teams] of Object.entries(STATE.divisions.Western)) west.appendChild(divisionBlock('Western', div, teams));
+    }
+    function divisionBlock(conf, div, teams) {
+      const block = document.createElement('div'); block.className = 'division';
+      const h = document.createElement('h3'); h.textContent = `${div}`; block.appendChild(h);
+      const list = document.createElement('div'); list.className = 'team-list'; list.dataset.conf = conf; list.dataset.div = div; block.appendChild(list);
+      teams.forEach(t => list.appendChild(makeTeamChip(t.name)));
+      hookDropZone(list, (srcName, targetList, afterNode) => {
+        // Reorder within division
+        const arr = STATE.divisions[conf][div];
+        const idx = arr.findIndex(t => t.name === srcName);
+        const [item] = arr.splice(idx, 1);
+        let newIndex = (afterNode ? [...targetList.children].indexOf(afterNode) + 1 : 0);
+        arr.splice(newIndex, 0, item);
+        // Also reflect in conference order if both belong to same conf
+        const confArr = STATE.standings[conf];
+        const i = confArr.indexOf(srcName); confArr.splice(i,1); // remove
+        // insert roughly near other from same division position
+        const siblings = arr.map(t=>t.name);
+        const anchor = siblings[Math.min(newIndex, siblings.length-1)];
+        const anchorIdx = confArr.indexOf(anchor);
+        confArr.splice(Math.max(anchorIdx,0), 0, srcName);
+        savePoint(); renderStandings();
+      });
+      return block;
+    }
+
+    function renderStandings() {
+      const e = document.getElementById('east-ordered'); e.innerHTML = '';
+      const w = document.getElementById('west-ordered'); w.innerHTML = '';
+      STATE.standings.Eastern.forEach(name => e.appendChild(makeTeamChip(name)));
+      STATE.standings.Western.forEach(name => w.appendChild(makeTeamChip(name)));
+      hookDropZone(e, (name, list, after) => reorderConference('Eastern', name, list, after));
+      hookDropZone(w, (name, list, after) => reorderConference('Western', name, list, after));
+      renderBrackets();
+    }
+    function reorderConference(conf, name, list, afterNode) {
+      const arr = STATE.standings[conf];
+      const from = arr.indexOf(name); if (from < 0) return;
+      arr.splice(from,1);
+      const idx = afterNode ? [...list.children].indexOf(afterNode) + 1 : 0;
+      arr.splice(idx, 0, name);
+      savePoint(); renderStandings();
+    }
+
+    // --- Drag & Drop helpers ----------------------------------------------
+    let dragData = { el: null };
+    function hookDnD(el) {
+      el.addEventListener('dragstart', (e) => { dragData.el = el; setTimeout(()=>el.classList.add('ghost'), 0); e.dataTransfer.setData('text/plain', el.dataset.team); e.dataTransfer.effectAllowed = 'move'; });
+      el.addEventListener('dragend', () => { el.classList.remove('ghost'); dragData.el = null; });
+    }
+    function hookDropZone(zone, onDrop) {
+      zone.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const name = e.dataTransfer.getData('text/plain');
+        const afterNode = [...zone.querySelectorAll('.team')].find(n => {
+          const r = n.getBoundingClientRect();
+          return e.clientY > r.top && e.clientY < r.bottom && e.clientY > (r.top + r.height/2);
+        });
+        onDrop(name, zone, afterNode || null);
+      });
+    }
+
+    // --- Playoffs ----------------------------------------------------------
+    function seeds(conf) { return STATE.standings[conf].slice(0, 10); }
+    function renderBrackets() {
+      const bracket = { Eastern: makeConfBracket('Eastern'), Western: makeConfBracket('Western') };
+      document.getElementById('east-bracket').replaceChildren(...bracket.Eastern);
+      document.getElementById('west-bracket').replaceChildren(...bracket.Western);
+    }
+    function makeConfBracket(conf) {
+      const s = seeds(conf);
+      const el = [];
+      // Play-in: 7v8, 9v10
+      el.push(sectionTitle(`${conf} — Play-In`));
+      el.push(match(conf, 'PI-7-8', s[6], s[7], true));
+      el.push(match(conf, 'PI-9-10', s[8], s[9], true));
+      // First Round
+      el.push(sectionTitle(`${conf} — First Round`));
+      const s7 = winnerOf(conf,'PI-7-8');
+      const s8 = winnerOf(conf,'PI-9-10');
+      el.push(match(conf, 'R1-1-8', s[0], s8));
+      el.push(match(conf, 'R1-2-7', s[1], s7));
+      el.push(match(conf, 'R1-3-6', s[2], s[5]));
+      el.push(match(conf, 'R1-4-5', s[3], s[4]));
+      // Semis
+      el.push(sectionTitle(`${conf} — Semifinals`));
+      el.push(match(conf, 'SF-1', winnerOf(conf,'R1-1-8'), winnerOf(conf,'R1-4-5')));
+      el.push(match(conf, 'SF-2', winnerOf(conf,'R1-2-7'), winnerOf(conf,'R1-3-6')));
+      // Finals
+      el.push(sectionTitle(`${conf} — Finals`));
+      el.push(match(conf, 'CF', winnerOf(conf,'SF-1'), winnerOf(conf,'SF-2')));
+      // NBA Finals will be separate, based on winners
+      return el;
+    }
+    function sectionTitle(text){ const t=document.createElement('div'); t.className='tiny muted'; t.style.margin='6px 0'; t.textContent=text; return t; }
+    function winnerOf(conf,key){ return STATE.bracket[conf]?.[key]?.winner || ''; }
+    function match(conf, key, a, b, isPlayIn=false) {
+      const row = document.createElement('div'); row.className = 'match';
+      const left = document.createElement('div'); left.textContent = a && b ? `${a} vs ${b}` : 'TBD';
+      const right = document.createElement('div'); right.className = 'series';
+      const sel = document.createElement('select');
+      ;[4,5,6,7].forEach(n => sel.appendChild(new Option(`${n} games`, String(n))));
+      const pickA = document.createElement('button'); pickA.textContent = a ? teamShort(a) : 'A';
+      const pickB = document.createElement('button'); pickB.textContent = b ? teamShort(b) : 'B';
+      [pickA,pickB].forEach(btn => btn.disabled = !(a && b));
+      const record = STATE.bracket[conf][key] || { winner: '', games: 4 };
+      sel.value = record.games || 4;
+      if (record.winner === a) pickA.classList.add('primary');
+      if (record.winner === b) pickB.classList.add('primary');
+      pickA.onclick = () => { STATE.bracket[conf][key] = { winner: a, games: Number(sel.value) }; savePoint(); renderBrackets(); renderFinals(); };
+      pickB.onclick = () => { STATE.bracket[conf][key] = { winner: b, games: Number(sel.value) }; savePoint(); renderBrackets(); renderFinals(); };
+      sel.onchange = () => { const rec = STATE.bracket[conf][key] || {}; rec.games = Number(sel.value); STATE.bracket[conf][key] = rec; savePoint(); };
+      right.append(pickA, pickB, sel);
+      row.append(left,right);
+      return row;
+    }
+    function teamShort(name){ return name.split(' ').slice(-1)[0]; }
+
+    function renderFinals(){
+      // Could be extended: create an NBA Finals panel between conference winners
+      // Left for iteration; current export includes conference winners.
+    }
+
+    // --- Awards/All-Star/Stats bindings -----------------------------------
+    const bind = (id, path) => {
+      const el = document.getElementById(id);
+      const set = (v) => { const parts = path.split('.'); let o = STATE; while(parts.length>1){ o = o[parts.shift()]; } o[parts[0]] = v; }
+      const get = () => { const parts = path.split('.'); let o = STATE; while(parts.length){ o = o[parts.shift()]; } return o; }
+      const render = () => { if (el.type === 'range' || el.type === 'text' || el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') el.value = get() ?? ''; };
+      el.addEventListener('change', () => { set(el.value); savePoint(); });
+      render();
+    }
+    bind('mvp','awards.mvp'); bind('dpoy','awards.dpoy'); bind('smoy','awards.smoy'); bind('roy','awards.roy'); bind('mip','awards.mip'); bind('coy','awards.coy'); bind('eoy','awards.eoy'); bind('awards-confidence','awards.confidence');
+    bind('ppg','leaders.ppg'); bind('rpg','leaders.rpg'); bind('apg','leaders.apg'); bind('spg','leaders.spg'); bind('bpg','leaders.bpg'); bind('tpp','leaders.tpp'); bind('top-off','leaders.topOff'); bind('top-def','leaders.topDef'); bind('most-3pm','leaders.most3pm'); bind('best-ft','leaders.bestFt');
+    bind('overall-confidence','overallConfidence'); bind('notes','notes');
+
+    // All-Star textareas
+    const asBind = (id, key) => {
+      const el = document.getElementById(id);
+      const render = () => el.value = (STATE.allstar[key]||[]).join(', ');
+      el.addEventListener('change', () => { STATE.allstar[key] = el.value.split(',').map(s=>s.trim()).filter(Boolean); savePoint(); });
+      render();
+    };
+    asBind('east-starters','easternStarters'); asBind('west-starters','westernStarters'); asBind('east-reserves','easternReserves'); asBind('west-reserves','westernReserves');
+    bind('as-mvp','allstar.mvp');
+
+    // Team records UI
+    function renderRecords(){
+      const host = document.getElementById('team-records'); host.innerHTML='';
+      allTeams().forEach(team => {
+        const row = document.createElement('div'); row.className='chip'; row.style.display='grid'; row.style.gridTemplateColumns='auto 44px 10px 44px'; row.style.gap='8px';
+        const label = document.createElement('div'); label.textContent = team; label.className='tiny'; row.appendChild(label);
+        const w = document.createElement('input'); w.type='number'; w.min='0'; w.max='82'; w.value = STATE.records[team]?.w ?? 41; w.title='Wins';
+        const sep = document.createElement('div'); sep.textContent='-'; sep.className='muted'; sep.style.textAlign='center';
+        const l = document.createElement('input'); l.type='number'; l.min='0'; l.max='82'; l.value = STATE.records[team]?.l ?? 41; l.title='Losses';
+        [w,l].forEach(inp=>{ inp.addEventListener('change', ()=>{ STATE.records[team] = { w: Number(w.value), l: Number(l.value) }; savePoint(); }); });
+        row.append(w, sep, l); host.appendChild(row);
+      });
+    }
+
+    // --- Actions -----------------------------------------------------------
+    document.getElementById('undo').onclick = () => { if (!HISTORY.past.length) return; const snap = HISTORY.past.pop(); HISTORY.future.push(JSON.stringify(STATE)); restore(snap); };
+    document.getElementById('redo').onclick = () => { if (!HISTORY.future.length) return; const snap = HISTORY.future.pop(); HISTORY.past.push(JSON.stringify(STATE)); restore(snap); };
+    document.getElementById('save').onclick = () => { localStorage.setItem('nba-predict-state', JSON.stringify(STATE)); flash('Saved locally'); };
+    document.getElementById('export').onclick = () => exportData();
+    document.getElementById('print').onclick = () => window.print();
+    document.querySelector('[data-action="reset"]').onclick = () => { if (confirm('Reset all predictions?')) { Object.assign(STATE, { ...STATE, bracket:{Eastern:{},Western:{},Finals:{}}, playin:{Eastern:{},Western:{}}, awards:{mvp:"",dpoy:"",smoy:"",roy:"",mip:"",coy:"",eoy:"",confidence:5}, allstar:{easternStarters:[],westernStarters:[],easternReserves:[],westernReserves:[],mvp:""}, leaders:{ppg:"",rpg:"",apg:"",spg:"",bpg:"",tpp:"",topOff:"",topDef:"",most3pm:"",bestFt:""}, overallConfidence:5, notes:"" }); initDefaults(); savePoint(); renderAll(); } };
+    document.querySelector('[data-action="randomize"]').onclick = () => { ['Eastern','Western'].forEach(c=>STATE.standings[c].sort(()=>Math.random()-0.5)); savePoint(); renderStandings(); };
+
+    document.getElementById('season').onchange = (e) => { STATE.season = e.target.value; savePoint(); };
+
+    document.getElementById('compare').onclick = async () => {
+      const f = document.getElementById('import-file').files?.[0]; if (!f) { flash('Pick a JSON file to compare'); return; }
+      const text = await f.text();
+      try { const other = JSON.parse(text); const diffs = compareStates(STATE, other); document.getElementById('compare-out').innerHTML = diffs || 'No differences'; } catch { flash('Invalid JSON'); }
+    }
+
+    function compareStates(a,b){
+      const lines = [];
+      const cmpArr = (path, A, B) => {
+        if (!Array.isArray(A) || !Array.isArray(B)) return;
+        if (A.join('|') !== B.join('|')) lines.push(`${path} differs`);
+      };
+      cmpArr('standings.Eastern', a.standings?.Eastern || [], b.standings?.Eastern || []);
+      cmpArr('standings.Western', a.standings?.Western || [], b.standings?.Western || []);
+      ['mvp','dpoy','smoy','roy','mip','coy','eoy'].forEach(k=>{ if ((a.awards?.[k]||'') !== (b.awards?.[k]||'')) lines.push(`awards.${k} differs`); });
+      if ((a.allstar?.mvp||'') !== (b.allstar?.mvp||'')) lines.push('allstar.mvp differs');
+      return lines.join('<br/>');
+    }
+
+    function exportData(){
+      const data = JSON.stringify(STATE, null, 2);
+      download(`nba-predictions-${STATE.season.replace(/\s+/g,'')}.json`, data, 'application/json');
+      // CSV (conference order only)
+      const csv = [ ['Seed','Conference','Team'].join(',') ];
+      ['Eastern','Western'].forEach(conf => STATE.standings[conf].forEach((t,i)=>csv.push([i+1, conf, '"'+t+'"'].join(','))));
+      download(`nba-standings-${STATE.season.replace(/\s+/g,'')}.csv`, csv.join('\n'), 'text/csv');
+      flash('Exported JSON and CSV');
+    }
+    function download(name, content, type){
+      const a = document.createElement('a'); a.download = name; a.href = URL.createObjectURL(new Blob([content], { type })); a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    function flash(msg){
+      const b = document.createElement('div');
+      b.textContent = msg; b.style.position='fixed'; b.style.bottom='16px'; b.style.left='50%'; b.style.transform='translateX(-50%)'; b.style.background='var(--panel)'; b.style.border='1px solid var(--stroke)'; b.style.padding='8px 12px'; b.style.borderRadius='10px'; b.style.boxShadow='var(--shadow)'; b.style.zIndex='1000';
+      document.body.appendChild(b); setTimeout(()=>b.remove(), 1600);
+    }
+
+    // --- Initial Render ----------------------------------------------------
+    function renderAll(){ renderDivisions(); renderStandings(); renderRecords(); }
+    renderAll(); updateUndoRedo();
+
+    // Keyboard shortcuts for undo/redo
+    window.addEventListener('keydown', (e) => {
+      const z = e.key.toLowerCase() === 'z';
+      if ((e.metaKey || e.ctrlKey) && z && !e.shiftKey) { e.preventDefault(); document.getElementById('undo').click(); }
+      if ((e.metaKey || e.ctrlKey) && z && e.shiftKey) { e.preventDefault(); document.getElementById('redo').click(); }
+    });
+  </script>
+</body>
+</html>
+
